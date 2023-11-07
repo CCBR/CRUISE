@@ -42,9 +42,9 @@ def print_error(error, context="Line", context_str=""):
 def check_samplesheet(file_in, file_out):
     """
     This function checks that the samplesheet follows the following structure:
-    sample,fastq_1,fastq_2
-    SPT5_T0_REP1,SRR1822153_1.fastq.gz,SRR1822153_2.fastq.gz
-    SPT5_T0_REP2,SRR1822154_1.fastq.gz,SRR1822154_2.fastq.gz
+    sample,fastq_1,fastq_2,treat_or_ctrl
+    SPT5_T0_REP1,SRR1822153_1.fastq.gz,SRR1822153_2.fastq.gz,treatment
+    SPT5_T0_REP2,SRR1822154_1.fastq.gz,SRR1822154_2.fastq.gz,control
     """
 
     sample_mapping_dict = {}
