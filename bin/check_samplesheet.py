@@ -181,7 +181,7 @@ def check_samplesheet(file_in_samplesheet, file_in_contrastsheet):
     ## Write validated samplesheet(s) with appropriate columns
     if len(sample_mapping_dict) > 0:
         for groupID in sorted(sample_mapping_dict.keys()):
-            file_out=groupID + ".csv"
+            file_out="valid.samplesheet." + groupID + ".csv"
             with open(file_out, "w") as fout:
                 fout.write(
                     ",".join(
