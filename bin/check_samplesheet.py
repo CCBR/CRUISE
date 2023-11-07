@@ -2,6 +2,7 @@
 
 """
 adapted from https://github.com/nf-core/chipseq/blob/51eba00b32885c4d0bec60db3cb0a45eb61e34c5/bin/check_samplesheet.py
+python check_samplesheet.py /data/CCBR/projects/ccbr1301/analysis/cruise_231106/assets/sample_manifest.csv /data/CCBR/projects/ccbr1301/analysis/cruise_231106/assets/contrast_manifest.csv 
 """
 
 import os
@@ -12,11 +13,11 @@ import argparse
 
 def parse_args(args=None):
     Description = "Reformat samplesheet file and check its contents."
-    Epilog = "Example usage: python check_samplesheet.py <FILE_IN> <FILE_OUT>"
+    Epilog = "Example usage: python check_samplesheet.py <FILE_IN_SAMPLESHEET> <FILE_IN_CONTRASTSHEET>"
 
     parser = argparse.ArgumentParser(description=Description, epilog=Epilog)
-    parser.add_argument("FILE_IN", help="Input samplesheet file.")
-    parser.add_argument("FILE_OUT", help="Output file.")
+    parser.add_argument("FILE_IN_SAMPLESHEET", help="Input samplesheet file.")
+    parser.add_argument("FILE_IN_CONTRASTSHEET", help="Input contrastsheet file.")
     return parser.parse_args(args)
 
 
@@ -38,20 +39,27 @@ def print_error(error, context="Line", context_str=""):
     print(error_str)
     sys.exit(1)
 
-
-def check_samplesheet(file_in, file_out):
+def check_samplesheet(file_in_samplesheet, file_in_contrastsheet):
     """
     This function checks that the samplesheet follows the following structure:
-    sample,fastq_1,fastq_2,treat_or_ctrl
-    SPT5_T0_REP1,SRR1822153_1.fastq.gz,SRR1822153_2.fastq.gz,treatment
-    SPT5_T0_REP2,SRR1822154_1.fastq.gz,SRR1822154_2.fastq.gz,control
-    """
+    sample,fastq_1,fastq_2,treat_or_ctrl,groupID
+    SPT5_T0_REP1,SRR1822153_1.fastq.gz,SRR1822153_2.fastq.gz,treatment,group1
+    SPT5_T0_REP2,SRR1822154_1.fastq.gz,SRR1822154_2.fastq.gz,control,group1
+    SPT6_T0_REP1,SRR1822155_1.fastq.gz,SRR1822155_2.fastq.gz,treatment,group2
+    SPT6_T0_REP2,SRR1822156_1.fastq.gz,SRR1822156_2.fastq.gz,control,group2
 
+    This function checks that the contrastsheet follows the following structure:
+    groupID,libraryID
+    group1,lib-01
+    group2,lib-02
+    """
+    #####################################################################################
+    # check samplesheet, create mapping dict
     sample_mapping_dict = {}
-    with open(file_in, "r", encoding="utf-8-sig") as fin:
+    with open(file_in_samplesheet, "r", encoding="utf-8-sig") as fin:
         ## Check header
         MIN_COLS = 2
-        HEADER = ["sample", "fastq_1", "fastq_2", "treat_or_ctrl"]
+        HEADER = ["sample", "fastq_1", "fastq_2", "treat_or_ctrl", "groupID"]
         header = [x.strip('"') for x in fin.readline().strip().split(",")]
         if header[: len(HEADER)] != HEADER:
             print(
@@ -62,6 +70,11 @@ def check_samplesheet(file_in, file_out):
         ## Check sample entries
         for line in fin:
             lspl = [x.strip().strip('"') for x in line.strip().split(",")]
+
+             # If it's a blank line, next
+            if len(line.strip()) == 0:
+                print("Skipping blank line")
+                continue
 
             # Check valid number of columns per row
             if len(lspl) < len(HEADER):
@@ -81,7 +94,7 @@ def check_samplesheet(file_in, file_out):
                 )
 
             ## Check sample name entries
-            sample, fastq_1, fastq_2, treat_or_ctrl = lspl[: len(HEADER)]
+            sample, fastq_1, fastq_2, treat_or_ctrl, groupID = lspl[: len(HEADER)]
             if sample.find(" ") != -1:
                 print(
                     f"WARNING: Spaces have been replaced by underscores for sample: {sample}"
@@ -90,7 +103,7 @@ def check_samplesheet(file_in, file_out):
             if not sample:
                 print_error("Sample entry has not been specified!", "Line", line)
 
-            ## Check FastQ file extension
+            ## Check FastQ file extension, exists
             for fastq in [fastq_1, fastq_2]:
                 if fastq:
                     if fastq.find(" ") != -1:
@@ -118,51 +131,88 @@ def check_samplesheet(file_in, file_out):
             else:
                 print_error("Invalid combination of columns provided!", "Line", line)
 
+            ## Create sample mapping dictionary = {group: [[ sample: [[ single_end, fastq_1, fastq_2,]] ]]}
+            if groupID not in sample_mapping_dict:
+                    sample_mapping_dict[groupID] = {}
+
             sample_info = [is_single, fastq_1, fastq_2, treat_or_ctrl]
-            ## Create sample mapping dictionary = {sample: [[ single_end, fastq_1, fastq_2,]]}
-            if sample not in sample_mapping_dict:
-                sample_mapping_dict[sample] = [sample_info]
+
+            if sample not in sample_mapping_dict[groupID]:
+                sample_mapping_dict[groupID][sample] = [sample_info]
             else:
-                if sample_info in sample_mapping_dict[sample]:
+                if sample_info in sample_mapping_dict[groupID][sample]:
                     print_error("Samplesheet contains duplicate rows!", "Line", line)
                 else:
-                    sample_mapping_dict[sample].append(sample_info)
+                    sample_mapping_dict[groupID][sample].append(sample_info)
 
-    ## Write validated samplesheet with appropriate columns
-    if len(sample_mapping_dict) > 0:
-        out_dir = os.path.dirname(file_out)
-        make_dir(out_dir)
-        with open(file_out, "w") as fout:
-            fout.write(
-                ",".join(
-                    ["sample", "single_end", "fastq_1", "fastq_2", "treat_or_ctrl"]
-                )
-                + "\n"
+    ###################################################################################################
+    # check contrastsheet
+    contrast_mapping_dict = {}
+    with open(file_in_contrastsheet, "r") as fin:
+        ## Check header
+        MIN_COLS = 2
+        HEADER = ["groupID", "libraryID"]
+        header = [x.strip('"') for x in fin.readline().strip().split(",")]
+        if header[: len(HEADER)] != HEADER:
+            print(
+                f"ERROR: Please check contrastsheet header -> {','.join(header)} != {','.join(HEADER)}"
             )
-            for sample in sorted(sample_mapping_dict.keys()):
-                ## Check that multiple runs of the same sample are of the same datatype i.e. single-end / paired-end
-                if not all(
-                    x[0] == sample_mapping_dict[sample][0][0]
-                    for x in sample_mapping_dict[sample]
-                ):
-                    print_error(
-                        f"Multiple runs of a sample must be of the same datatype i.e. single-end or paired-end!",
-                        "Sample",
-                        sample,
-                    )
+            sys.exit(1)
 
-                for idx, val in enumerate(sample_mapping_dict[sample]):
-                    plus_T = (
-                        f"_T{idx+1}" if len(sample_mapping_dict[sample]) > 1 else ""
-                    )  # do not append _T{idx} if not needed
-                    fout.write(",".join([f"{sample}{plus_T}"] + val) + "\n")
+        ## Check sample entries
+        for line in fin:
+            lspl = [x.strip().strip('"') for x in line.strip().split(",")]
+
+            # Check valid number of columns per row
+            num_cols = len([x for x in lspl if x])
+            if num_cols < MIN_COLS:
+                print_error(
+                    "Invalid number of populated columns (minimum = {})!".format(MIN_COLS),
+                    "Line",
+                    line,
+                )
+            
+            # validate groupID is in samplesheet
+            groupID, libraryID = lspl[: len(HEADER)]
+            if groupID not in sample_mapping_dict:
+                print_error("groupID entry found in the contrastsheet is not one listed in the samplesheet. Check groupIDs!", "Line", groupID)
+
+    ###################################################################################################
+    ## Write validated samplesheet(s) with appropriate columns
+    if len(sample_mapping_dict) > 0:
+        for groupID in sorted(sample_mapping_dict.keys()):
+            file_out=groupID + ".csv"
+            with open(file_out, "w") as fout:
+                fout.write(
+                    ",".join(
+                        ["sample", "single_end", "fastq_1", "fastq_2", "treat_or_ctrl"]
+                    )
+                    + "\n"
+                )
+                for sample in sorted(sample_mapping_dict[groupID].keys()):
+                    ## Check that multiple runs of the same sample are of the same datatype i.e. single-end / paired-end
+                    if not all(
+                        x[0] == sample_mapping_dict[groupID][sample][0][0]
+                        for x in sample_mapping_dict[groupID][sample]
+                    ):
+                        print_error(
+                            f"Multiple runs of a sample must be of the same datatype i.e. single-end or paired-end!",
+                            "Sample",
+                            sample,
+                        )
+
+                    for idx, val in enumerate(sample_mapping_dict[groupID][sample]):
+                        plus_T = (
+                            f"_T{idx+1}" if len(sample_mapping_dict[groupID][sample]) > 1 else ""
+                        )  # do not append _T{idx} if not needed
+                        fout.write(",".join([f"{sample}{plus_T}"] + val) + "\n")
     else:
-        print_error(f"No entries to process!", "Samplesheet: {file_in}")
+        print_error(f"No entries to process!", "Samplesheet: {file_in_samplesheet}")
 
 
 def main(args=None):
     args = parse_args(args)
-    check_samplesheet(args.FILE_IN, args.FILE_OUT)
+    check_samplesheet(args.FILE_IN_SAMPLESHEET, args.FILE_IN_CONTRASTSHEET)
 
 
 if __name__ == "__main__":
