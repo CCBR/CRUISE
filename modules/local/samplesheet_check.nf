@@ -8,17 +8,19 @@ process SAMPLESHEET_CHECK {
 
     input:
     path samplesheet
+    path contrastsheet
 
     output:
-    path '*.csv'       , emit: csv
-    path "versions.yml", emit: versions
+    path 'valid.samplesheet.csv'            , emit: run_samplesheet
+    path 'valid.contrastsheet.csv'        , emit: run_contrastsheet
+    path "versions.yml"                                , emit: versions
 
     script:
     """
     check_samplesheet.py \\
         $samplesheet \\
-        samplesheet.valid.csv
-
+        $contrastsheet
+        
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         python: \$(python --version | sed 's/Python //g')

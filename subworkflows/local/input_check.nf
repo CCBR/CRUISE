@@ -8,25 +8,33 @@ include { SAMPLESHEET_CHECK } from '../../modules/local/samplesheet_check.nf'
 workflow INPUT_CHECK {
     take:
     samplesheet // file: /path/to/samplesheet.csv
+    contrastsheet // file: /path/to/contrastsheet.csv
 
     main:
-    SAMPLESHEET_CHECK ( samplesheet )
-        .csv
-        .splitCsv ( header:true, sep:',' )
+    // Validate the samplesheet
+    // Validate the contrastsheet
+    SAMPLESHEET_CHECK ( 
+        samplesheet,
+        contrastsheet
+        )
+
+    SAMPLESHEET_CHECK.out.run_samplesheet
+        .splitCsv( header:true, sep:',', strip:true )
         .map { create_fastq_channel(it) }
         .set { reads }
 
     emit:
-    reads                                     // channel: [ val(meta), [ reads ] ]
-    versions = SAMPLESHEET_CHECK.out.versions // channel: [ versions.yml ]
+        ch_reads = reads
+        versions = SAMPLESHEET_CHECK.out.versions // channel: [ versions.yml ]
 }
 
-// Function to get list of [ meta, [ fastq_1, fastq_2 ] ]
 def create_fastq_channel(LinkedHashMap row) {
     def meta = [:]
-    meta.id         = row.sample
-    meta.single_end = row.single_end.toBoolean()
-    meta.treat_or_ctrl = row.treat_or_ctrl
+    meta.groupID         = row.groupID
+    // meta.libraryID      = row.libraryID
+    // meta.sample       = row.sample
+    meta.single_end    = row.single_end
+    // meta.treat_or_ctrl  = row.treat_or_ctrl
 
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
