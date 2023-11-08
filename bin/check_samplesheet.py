@@ -160,35 +160,45 @@ def check_samplesheet(file_in_samplesheet, file_in_contrastsheet):
             sys.exit(1)
 
         ## Check sample entries
-        for line in fin:
-            lspl = [x.strip().strip('"') for x in line.strip().split(",")]
+        file_out_contrast="valid.contrastsheet.csv"
+        with open(file_out_contrast, "w") as fout:
+            fout.write(",".join(["groupID", "libraryID", "contrastFILE"])+ "\n")
+        
+            for line in fin:
+                lspl = [x.strip().strip('"') for x in line.strip().split(",")]
 
-            # Check valid number of columns per row
-            num_cols = len([x for x in lspl if x])
-            if num_cols < MIN_COLS:
-                print_error(
-                    "Invalid number of populated columns (minimum = {})!".format(MIN_COLS),
-                    "Line",
-                    line,
-                )
-            
-            # validate groupID is in samplesheet
-            groupID, libraryID = lspl[: len(HEADER)]
-            if groupID not in sample_mapping_dict:
-                print_error("groupID entry found in the contrastsheet is not one listed in the samplesheet. Check groupIDs!", "Line", groupID)
+                # Check valid number of columns per row
+                num_cols = len([x for x in lspl if x])
+                if num_cols < MIN_COLS:
+                    print_error(
+                        "Invalid number of populated columns (minimum = {})!".format(MIN_COLS),
+                        "Line",
+                        line,
+                    )
+                
+                # validate groupID is in samplesheet
+                groupID, libraryID = lspl[: len(HEADER)]
+                if groupID not in sample_mapping_dict:
+                    print_error("groupID entry found in the contrastsheet is not one listed in the samplesheet. Check groupIDs!", "Line", groupID)
+
+                if groupID not in contrast_mapping_dict:
+                    contrast_mapping_dict[groupID]={}
+                contrast_mapping_dict[groupID]=libraryID
+
+                fout.write(",".join([groupID, libraryID])+ "\n")
 
     ###################################################################################################
     ## Write validated samplesheet(s) with appropriate columns
     if len(sample_mapping_dict) > 0:
-        for groupID in sorted(sample_mapping_dict.keys()):
-            file_out="valid.samplesheet." + groupID + ".csv"
-            with open(file_out, "w") as fout:
-                fout.write(
+        file_out="valid.samplesheet.csv"
+        with open(file_out, "w") as fout:
+            fout.write(
                     ",".join(
-                        ["sample", "single_end", "fastq_1", "fastq_2", "treat_or_ctrl"]
+                        ["groupID","libraryID","sample", "single_end", "fastq_1", "fastq_2", "treat_or_ctrl"]
                     )
                     + "\n"
                 )
+            for groupID in sorted(sample_mapping_dict.keys()):   
                 for sample in sorted(sample_mapping_dict[groupID].keys()):
                     ## Check that multiple runs of the same sample are of the same datatype i.e. single-end / paired-end
                     if not all(
@@ -205,10 +215,9 @@ def check_samplesheet(file_in_samplesheet, file_in_contrastsheet):
                         plus_T = (
                             f"_T{idx+1}" if len(sample_mapping_dict[groupID][sample]) > 1 else ""
                         )  # do not append _T{idx} if not needed
-                        fout.write(",".join([f"{sample}{plus_T}"] + val) + "\n")
+                        fout.write(",".join([f"{groupID},{contrast_mapping_dict[groupID]},{sample}{plus_T}"] + val) + "\n")
     else:
         print_error(f"No entries to process!", "Samplesheet: {file_in_samplesheet}")
-
 
 def main(args=None):
     args = parse_args(args)
